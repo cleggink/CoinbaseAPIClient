@@ -32,13 +32,17 @@ public class CoinbaseProClient extends Thread {
 	private String coinbaseWebsocketFeedURL; // COINBASE WEBSOCKET FEED URL
 
 	// DATA MAPPING
-	private Map<String, WebSocketClient> subscriptionMap;
-	private Map<String, String> subscriptionIdentMap;
+	private class SubscriptionMapper {
+		
+		String identifier;
+		WebSocketClient wsClient;
+	}	
+	private Map<String, SubscriptionMapper> subscriptionMap;
 	private Map<String, CoinbaseAPIResponse.Currency> currencyMap;
 	private Map<String, CoinbaseAPIResponse.Products> productMap;
 	private Map<String, CoinbaseAPIResponse> priceMap;
 	private Map<String, CoinbaseAPIResponse> orderBook;
-	private Map<String, Boolean> orderLedger;
+	private Map<String, String> orderLegend;
 	
 	// CLIENT CONTROL VARIABLES
 	private Boolean LOGGER_LEVEL;
@@ -47,6 +51,7 @@ public class CoinbaseProClient extends Thread {
 	private Boolean PULSE;
 	private Boolean QUIET_HEARTBEAT; 
 	private Integer SAURON_TIMER;
+	private Boolean IS_STREAMING;
 
 	// CONSTRUCTION
 	public CoinbaseProClient(String baseURL, String wsFeedURL, String secretKey, String apiKey, String passphrase) { // PASS API CREDENTIALS AND URLS
@@ -73,19 +78,19 @@ public class CoinbaseProClient extends Thread {
 		
 		this.SAURON_TIMER = 10000;
 		this.PULSE = true;
+		this.IS_STREAMING = false;
 		this.setName("COINBASE PRO API CLIENT by Zeus");
 		this.setDaemon(true);
 		this.enableLogger();
-		this.enableDataMessages();
+		this.disableDataMessages();
 		this.enableDeserializationIgnoreExeceptions();
 		this.disablePulseCheck();
-		this.subscriptionMap = new HashMap<String, WebSocketClient>();
-		this.subscriptionIdentMap = new HashMap<String, String>();
+		this.subscriptionMap = new HashMap<String, SubscriptionMapper>();
 		this.currencyMap = new HashMap<String, CoinbaseAPIResponse.Currency>();
 		this.productMap = new HashMap<String, CoinbaseAPIResponse.Products>();
 		this.priceMap = new HashMap<String, CoinbaseAPIResponse>();
 		this.orderBook = new HashMap<String, CoinbaseAPIResponse>();
-		this.orderLedger = new HashMap<String, Boolean>();
+		this.orderLegend = new HashMap<String, String>();
 		this.subscribe("STATUS CHANNEL", null, true, false, false, false, false, false, false, false);
 	}
 
@@ -115,22 +120,23 @@ public class CoinbaseProClient extends Thread {
 				
 				this.subscriptionMap.forEach((key, value) -> {
 					
-					if(!value.isOpen()) {
+					if(!value.wsClient.isOpen()) {
 						
-						this.logger("Status", "SUBSCRIPTION: " + this.subscriptionIdentMap.get(key) + " RESTARTING", null);
-						value = subscriptionListener(this.subscriptionIdentMap.get(key));
+						this.logger("Status", "SUBSCRIPTION: " + value.identifier + " RESTARTING", null);
+						value.wsClient = subscriptionListener(value.identifier);
 						this.subscriptionMap.replace(key, value);
 						
 						if(key.contains("matches") ||
 								key.contains("full") ||
-								key.contains("user")) { // CLEAR ORDER BOOK AND LEDGER
-							this.orderLedger = new HashMap<String, Boolean>();
+								key.contains("user")) { // CLEAR ORDER BOOK AND LEGEND TO REDOWNLOAD
+							this.orderBook = new HashMap<String, CoinbaseAPIResponse>();
+							this.orderLegend = new HashMap<String, String>();
 						}
-						value.connect();
+						value.wsClient.connect();
 						String jsonMessageFinal = this.subscriptionAuth(key);
 						jsonMessageFinal = String.join("", jsonMessageFinal, "\"}");
 						
-						while (!value.isOpen()) { // WAIT FOR CONNECTION
+						while (!value.wsClient.isOpen()) { // WAIT FOR CONNECTION
 						
 							try {
 								Thread.sleep(60);
@@ -139,7 +145,7 @@ public class CoinbaseProClient extends Thread {
 								this.logger("EXCEPTION", e.toString(), e);
 							}
 						}
-						value.send(jsonMessageFinal);
+						value.wsClient.send(jsonMessageFinal);
 					}
 				});
 				
@@ -213,8 +219,10 @@ public class CoinbaseProClient extends Thread {
 		}
 		
 		jsonMessageFinal = String.join("", jsonMessageFinal, jsonMessageAfterChannels);
-		this.subscriptionMap.put(jsonMessageFinal, subscription);
-		this.subscriptionIdentMap.put(jsonMessageFinal, identifier);
+		SubscriptionMapper entry = new SubscriptionMapper();
+		entry.identifier = identifier;
+		entry.wsClient = subscription;
+		this.subscriptionMap.put(jsonMessageFinal, entry);
 		subscription.connect();
 		
 		if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
@@ -236,26 +244,23 @@ public class CoinbaseProClient extends Thread {
 	public void unsubscribeAll() { // END ALL SUBSCRIPTIONS AND CLOSE WebSocketClient
 		
 		this.subscriptionMap.forEach((key, value) -> {		
-			value.close();
+			value.wsClient.close();
 			subscriptionMap.remove(key);
 		});
 		this.orderBook = new HashMap<String, CoinbaseAPIResponse>();
-		this.orderLedger = new HashMap<String, Boolean>();
+		this.orderLegend = new HashMap<String, String>();
 	}
-	
+
 	public void unsubscribe(WebSocketClient killBillVol1) { // END SINGULAR SUBSCRIPTION
-		
-		if(this.subscriptionMap.containsValue(killBillVol1)) {
-			
-			this.subscriptionMap.forEach((key, value) -> {
-				
-				if(killBillVol1 == value) {
-					value.close();
-					subscriptionMap.remove(key);
-					return;
-				}
-			});
-		}
+
+		this.subscriptionMap.forEach((key, value) -> {
+
+			if(killBillVol1 == value.wsClient) {
+				value.wsClient.close();
+				subscriptionMap.remove(key);
+				return;
+			}
+		});
 	}
 
 	private void dataDecision(CoinbaseAPIResponse pData) { // DATA INSERTION DECISION TREE
@@ -414,6 +419,7 @@ public class CoinbaseProClient extends Thread {
 			this.logger("Status", "DATA RECEIPT: " + pData.getProduct_id().toUpperCase() +" TICKER", null);
 		}
 		this.addPriceMapEntry(pData.getProduct_id(), pData);
+		this.IS_STREAMING = true;
 	}
 
 	private void l2updateMessageRecieved(CoinbaseAPIResponse pData) { // L2UPDATE MESSAGE RECIEVED
@@ -429,6 +435,7 @@ public class CoinbaseProClient extends Thread {
 			this.priceMap.get(pData.getProduct_id()).setSize(Double.valueOf(each[2]));
 			this.priceMap.get(pData.getProduct_id()).setTime(pData.getTime());
 		}
+		this.IS_STREAMING = true;
 	}
 
 	private void snapshotMessageRecieved(CoinbaseAPIResponse pData) { // SNAPSHOT MESSAGE RECIEVED
@@ -437,19 +444,6 @@ public class CoinbaseProClient extends Thread {
 			this.logger("Status", "DATA RECEIPT: " + pData.getProduct_id().toUpperCase() + " SNAPSHOT", null);
 		}
 		this.addPriceMapEntry(pData.getProduct_id(), pData);
-		Integer x = 0;
-		Double total = Double.valueOf(0);
-
-		for(String[] eachSet : pData.getAsks()) {
-			total = total + Double.valueOf(eachSet[0]);
-			x++;
-		}
-
-		for(String[] eachSet : pData.getBids()) {
-			total = total + Double.valueOf(eachSet[0]);
-			x++;
-		}
-		this.priceMap.get(pData.getProduct_id()).setPrice(total / x);
 	}
 
 	private void heartbeatMessageRecieved(CoinbaseAPIResponse pData) { // HEARTBEAT MESSAGE RECIEVED
@@ -529,7 +523,7 @@ public class CoinbaseProClient extends Thread {
 						eachChannel.getName().compareTo("full") == 0 ||
 						eachChannel.getName().compareTo("user") == 0) {
 
-					if(!this.orderLedger.containsKey(eachProduct)) { // NO ENTRY DETECTED
+					if(!this.orderLegend.containsKey(eachProduct)) { // NO ENTRY DETECTED
 
 						if(this.DATA_RECEIPT) {
 							this.logger("Status", "DOWNLOADING ORDERS: " + eachProduct, null);
@@ -552,7 +546,7 @@ public class CoinbaseProClient extends Thread {
 							entry.setSide("buy");
 							this.addOrderBookEntry(eachOrder[2], entry);
 						}
-						this.orderLedger.put(eachProduct, true);
+						this.orderLegend.put(eachProduct, eachChannel.getName());
 					}
 				}
 			}
@@ -924,12 +918,6 @@ public class CoinbaseProClient extends Thread {
 		return this.currencyMap.containsKey(addThisKEY);
 	}
 
-	private Boolean removeCurrencyMapping(String KEY) { // REMOVE CURRENCY MAPPING
-
-		this.currencyMap.remove(KEY);
-		return !this.currencyMap.containsKey(KEY);
-	}
-
 	private Boolean addProductMapping(String addThisKEY, CoinbaseAPIResponse.Products addThisVALUE) { // ADD TO PRODUCT MAP
 
 		if (this.productMap.containsKey(addThisKEY)) { // ENTRY DETECTED
@@ -941,12 +929,6 @@ public class CoinbaseProClient extends Thread {
 		return this.productMap.containsKey(addThisKEY);
 	}
 
-	private Boolean removeProductMapping(String KEY) { // REMOVE PRODUCT MAPPING
-
-		this.productMap.remove(KEY);
-		return !this.productMap.containsKey(KEY);
-	}
-
 	private Boolean addPriceMapEntry(String addThisKEY, CoinbaseAPIResponse addThisVALUE) { // ADD TO PRICE MAP
 
 		if (!this.priceMap.containsKey(addThisKEY)) { // NO ENTRY DETECTED
@@ -956,12 +938,6 @@ public class CoinbaseProClient extends Thread {
 			this.priceMap.replace(addThisKEY, new CoinbaseAPIResponseComparison(this.priceMap.get(addThisKEY), addThisVALUE).getResult());
 		}
 		return this.priceMap.containsKey(addThisKEY);
-	}
-
-	private Boolean removePriceMapEntry(String KEY) { // REMOVE PRICE MAPPING
-
-		this.priceMap.remove(KEY);
-		return !this.priceMap.containsKey(KEY);
 	}
 
 	private Boolean addOrderBookEntry(String addThisKEY, CoinbaseAPIResponse addThisVALUE) { // ADD ORDER BOOK ENTRY
@@ -983,6 +959,25 @@ public class CoinbaseProClient extends Thread {
 		return !this.orderBook.containsKey(KEY);
 	}
 
+	/* UNUSED DATA MAPPING REMOVAL METHODS NOT READY TO DELETE THESE JUST YET
+	private Boolean removeProductMapping(String KEY) { // REMOVE PRODUCT MAPPING
+
+		this.productMap.remove(KEY);
+		return !this.productMap.containsKey(KEY);
+	}
+
+	private Boolean removeCurrencyMapping(String KEY) { // REMOVE CURRENCY MAPPING
+
+		this.currencyMap.remove(KEY);
+		return !this.currencyMap.containsKey(KEY);
+	}
+
+	private Boolean removePriceMapEntry(String KEY) { // REMOVE PRICE MAPPING
+
+		this.priceMap.remove(KEY);
+		return !this.priceMap.containsKey(KEY);
+	}*/
+
 	// DATA RETREIVAL
 	public Map<String, CoinbaseAPIResponse.Currency> getCurrencyMap() { // RETRIEVE CURRENCY MAP
 
@@ -994,7 +989,7 @@ public class CoinbaseProClient extends Thread {
 		return this.productMap;
 	}
 	
-	public Map<String, WebSocketClient> getSubscriptionMap() { // RETRIEVE SUBSCRIPTION MAP
+	public Map<String, SubscriptionMapper> getSubscriptionMap() { // RETRIEVE SUBSCRIPTION MAP
 		
 		return this.subscriptionMap;
 	}
@@ -1003,15 +998,15 @@ public class CoinbaseProClient extends Thread {
 		
 		return this.priceMap;
 	}
-	
-	public Map<String, String> getSubscriptionIdentifierMap() { // RETRIEVE THE IDENTIFIER MAP
-		
-		return this.subscriptionIdentMap;
-	}
-	
+
 	public Map<String, CoinbaseAPIResponse> getOrderBook() { // RETRIEVE ORDER BOOK
 		
 		return this.orderBook;
+	}
+	
+	public Boolean isStreaming() { // DATA STREAMING STATUS
+		
+		 return this.IS_STREAMING;
 	}
 	
 	// ENCRYPTION
