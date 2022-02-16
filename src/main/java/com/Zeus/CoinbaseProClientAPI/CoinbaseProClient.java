@@ -626,7 +626,7 @@ public class CoinbaseProClient extends Thread {
 				returnData = jsonDeserializationSingle(response.body());
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("getRequest", response.statusCode(), response.body())) {
+				if(this.restErrorHandler("getRequest", response.statusCode(), response.body(), endpoint + pathParams)) {
 					this.logger("RETRYING", "GET REQUEST: " + endpoint + pathParams , null);
 					return getRequest(endpoint, pathParams);
 				}
@@ -674,7 +674,7 @@ public class CoinbaseProClient extends Thread {
 				returnData = jsonDeserializationArray(response.body());
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("getRequestArray", response.statusCode(), response.body())) {
+				if(this.restErrorHandler("getRequestArray", response.statusCode(), response.body(), endpoint + pathParams)) {
 					this.logger("RETRYING", "GET REQUEST: " + endpoint + pathParams , null);
 					return getRequestArray(endpoint, pathParams);
 				}
@@ -722,7 +722,7 @@ public class CoinbaseProClient extends Thread {
 				returnData = jsonDeserializationSingle(response.body());
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("postRequest", response.statusCode(), response.body())) {
+				if(this.restErrorHandler("postRequest", response.statusCode(), response.body(), endpoint + requestBody)) {
 					this.logger("RETRYING", "POST REQUEST: " + endpoint + requestBody , null);
 					return postRequest(endpoint, requestBody);
 				}
@@ -770,7 +770,7 @@ public class CoinbaseProClient extends Thread {
 				returnData = jsonDeserializationArray(response.body());
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("postRequestArray", response.statusCode(), response.body())) {
+				if(this.restErrorHandler("postRequestArray", response.statusCode(), response.body(), endpoint + requestBody)) {
 					this.logger("RETRYING", "POST REQUEST: " + endpoint + requestBody , null);
 					return postRequestArray(endpoint, requestBody);
 				}
@@ -819,7 +819,7 @@ public class CoinbaseProClient extends Thread {
 				returnData = response.body().toString();
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("deleteRequest", response.statusCode(), response.body())) {
+				if(this.restErrorHandler("deleteRequest", response.statusCode(), response.body(), endpoint + pathParams)) {
 					this.logger("RETRYING", "DELETE REQUEST: " + endpoint + pathParams , null);
 					return deleteRequest(endpoint, pathParams);
 				}
@@ -867,7 +867,7 @@ public class CoinbaseProClient extends Thread {
 				returnData = jsonDeserializationSingle(response.body());
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("putRequest", response.statusCode(), response.body())) {
+				if(this.restErrorHandler("putRequest", response.statusCode(), response.body(), endpoint + pathParams + "{" + requestBody + "}")) {
 					this.logger("RETRYING", "PUT REQUEST: " + endpoint + pathParams + "{" + requestBody + "}", null);
 					return putRequest(endpoint, pathParams, requestBody);
 				}
@@ -915,7 +915,7 @@ public class CoinbaseProClient extends Thread {
 				returnData = jsonDeserializationArray(response.body());
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("putRequestArray", response.statusCode(), response.body())) {
+				if(this.restErrorHandler("putRequestArray", response.statusCode(), response.body(), endpoint + pathParams + "{" + requestBody + "}")) {
 					this.logger("RETRYING", "PUT REQUEST: " + endpoint + pathParams + "{" + requestBody + "}", null);
 					return putRequestArray(endpoint, pathParams, requestBody);
 				}
@@ -928,7 +928,9 @@ public class CoinbaseProClient extends Thread {
 		return returnData;
 	}
 
-	private Boolean restErrorHandler(String callingMethod, Integer statusCode, String responseBody) { // REST SUB-SYSTEM ERROR HANDLING (RETURNS TRUE IS RETRY IS CALLED FOR)
+	private Boolean restErrorHandler(String callingMethod, Integer statusCode, String responseBody, String request) { // REST SUB-SYSTEM ERROR HANDLING (RETURNS TRUE IS RETRY IS CALLED FOR)
+		
+		this.logger("ERROR", "REST REQUEST: " + request, null);
 		
 		Boolean messageHandled = false;
 		Boolean attemptResend = false;
