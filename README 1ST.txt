@@ -23,7 +23,6 @@
 			// setAPIKey(), setAPISecretKey(), and setAPIPassphrase()
 
 // SUBSCRIPTION RESPONSES ARE MAPPED BY EITHER CURRENCY ID OR PRODUCT ID FOR RETREIVAL AT YOUR CONVENIENCE
-// PRELIMINARY STATUS SUBSCRIPTION STARTED AT OBJECT CONSTRUCTION (YOU DON'T NEED TO DO THIS)
 // ALL NEW SUBSCRIPTIONS INVOKED BY subscribe() PASS BACK WebSocketClient FOR YOU TO unsubscribe(WebSocketClient)
 // THESE WebSocketClients ARE ALSO MAPPED TO subscriptionMap (SEE DATA RETRIEVAL BELOW)
 // unsubscribe() ALSO CLOSES AND DESTROYS WebSocketClient (YOU DON'T NEED TO WORRY ABOUT THIS)
@@ -33,7 +32,7 @@
 	// String identifier (WHATEVER YOU CHOOSE TO NAME THIS SUBSCRIPTION)
 	// String[] productIDList (JUST A LIST OF PRODUCT IDS)
 	// THE FOLLOWING BOOLEANS WILL ENABLE OR DISABLE USE OF VARYING CHANNELS:
-		// Boolean useStatus (ALREADY CREATED FOR YOU)
+		// Boolean useStatus
 		// Boolean useHeartbeat
 		// Boolean useLevel2
 		// Boolean useFull
@@ -77,6 +76,17 @@
 	// enablePulseCheck() or disablePulseCheck() (INDIVIDUAL TICKER, HEARTBEAT, AND LEVEL2 MESSAGES) ANNOYANCE - FOR DEBUGGING
 	// enableDeserializationIgnoreExeceptions() or disableDeserializationIgnoreExeceptions() (DESERIALIZATION IGNORE UNKNOWNS)
 		// MAY BE REQUIRED IF THERE HAS BEEN NEW SERVER RESPONSES THAT HAVE NOT BEEN PROCESSED (ENABLED BY DEFAULT BY JUSTIN CASE)
+	 
+// ADDING COMMON REST REQUESTS AS THEY COME UP INTO SECONDARY CLASS CommonRequests, IMPLIMENTED BY PASSING AN ACCOUNT CONTROL OBJECT
+	// CommonRequests cbRequest = new CommonRequests(CoinbaseProClient);
+	// CURRENT INCLUDEDED METHODS:
+		// CoinbaseAPIResponse getAccount(String accountID) -> RETURNS ACCOUNT STATISTICS
+		// String getAccountID(String currency) -> RETURNS accountID
+		// CoinbaseAPIResponse marketBuyOrder(String productID, String balance) -> EXECUTE IMMEDIATE MARKET BUY ORDER
+		// CoinbaseAPIResponse stopEntryLimitOrder(String productID, String trigger, String value, String balance) -> ACTIVATE STOP ENTRY ORDER
+		// CoinbaseAPIResponse stopLossLimitOrder(String productID, String trigger, String value, String balance) -> ACTIVATE STOP LOSS ORDER
+		// CoinbaseAPIResponse[] getFills(String orderID) -> GET ORDER FILLS INFO
+		// CoinbaseAPIResponse getOrder(String orderID) -> SINGLE ORDER STATS
 	 
 // WHATEVER YOU DO DON'T FORGET TO .start() THE THREAD IT WILL MONITOR YOUR SUBSCRIPTIONS FOR CONNECTION
 // AND RESUBSCRIBE ON CLOSE IF YOU HAVEN'T unsubscribe()ED

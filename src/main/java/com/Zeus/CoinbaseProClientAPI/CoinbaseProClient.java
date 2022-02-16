@@ -8,6 +8,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
 import javax.crypto.Mac;
@@ -32,11 +33,24 @@ public class CoinbaseProClient extends Thread {
 	private String coinbaseWebsocketFeedURL; // COINBASE WEBSOCKET FEED URL
 
 	// DATA MAPPING
-	private class SubscriptionMapper {
+	public class SubscriptionMapper {
 		
 		String identifier;
 		WebSocketClient wsClient;
 	}	
+	public class SubscriptionOptionsMapper {
+		
+		String[] productIDList;
+		Boolean useStatus;
+		Boolean useHeartbeat;
+		Boolean useLevel2;
+		Boolean useFull;
+		Boolean useUser;
+		Boolean useTicker;
+		Boolean useAuction;
+		Boolean useMatches;
+	}
+	private Map<String, SubscriptionOptionsMapper> subscriptionOptionsMap;
 	private Map<String, SubscriptionMapper> subscriptionMap;
 	private Map<String, CoinbaseAPIResponse.Currency> currencyMap;
 	private Map<String, CoinbaseAPIResponse.Products> productMap;
@@ -85,13 +99,13 @@ public class CoinbaseProClient extends Thread {
 		this.disableDataMessages();
 		this.enableDeserializationIgnoreExeceptions();
 		this.disablePulseCheck();
+		this.subscriptionOptionsMap = new HashMap<String, SubscriptionOptionsMapper>();
 		this.subscriptionMap = new HashMap<String, SubscriptionMapper>();
 		this.currencyMap = new HashMap<String, CoinbaseAPIResponse.Currency>();
 		this.productMap = new HashMap<String, CoinbaseAPIResponse.Products>();
 		this.priceMap = new HashMap<String, CoinbaseAPIResponse>();
 		this.orderBook = new HashMap<String, CoinbaseAPIResponse>();
 		this.orderLegend = new HashMap<String, String>();
-		this.subscribe("STATUS CHANNEL", null, true, false, false, false, false, false, false, false);
 	}
 
 	public void setAPIKey(String pKEY) { // SET API KEY SECURITY CREDENTIAL
@@ -122,6 +136,7 @@ public class CoinbaseProClient extends Thread {
 					
 					if(!value.wsClient.isOpen()) {
 						
+						this.IS_STREAMING = false;
 						this.logger("Status", "SUBSCRIPTION: " + value.identifier + " RESTARTING", null);
 						value.wsClient = subscriptionListener(value.identifier);
 						this.subscriptionMap.replace(key, value);
@@ -143,6 +158,7 @@ public class CoinbaseProClient extends Thread {
 							
 							} catch (InterruptedException e) {
 								this.logger("EXCEPTION", e.toString(), e);
+								this.end();
 							}
 						}
 						value.wsClient.send(jsonMessageFinal);
@@ -151,6 +167,7 @@ public class CoinbaseProClient extends Thread {
 				
 			} catch (Exception e) {
 				this.logger("EXCEPTION", e.toString(), e);
+				this.end();
 			}
 		}
 		this.unsubscribeAll();
@@ -165,6 +182,18 @@ public class CoinbaseProClient extends Thread {
 	public WebSocketClient subscribe(String identifier, String[] productIDList, Boolean useStatus, Boolean useHeartbeat,
 			Boolean useLevel2, Boolean useFull, Boolean useUser, Boolean useTicker, Boolean useAuction, Boolean useMatches) { 
 		
+		SubscriptionOptionsMapper optionsHold = new SubscriptionOptionsMapper();
+		optionsHold.productIDList = productIDList;
+		optionsHold.useAuction = useAuction;
+		optionsHold.useFull = useFull;
+		optionsHold.useHeartbeat = useHeartbeat;
+		optionsHold.useLevel2 = useLevel2;
+		optionsHold.useMatches = useMatches;
+		optionsHold.useStatus = useStatus;
+		optionsHold.useTicker = useTicker;
+		optionsHold.useUser = useUser;
+		this.subscriptionOptionsMap.put(identifier, optionsHold);
+		
 		WebSocketClient subscription = subscriptionListener(identifier);
 		// SUBSCRIPTION MESSAGE BUILDER REGEXES
 		String jsonMessagePrefix = "{\"type\":\"subscribe\",\"product_ids\":[";
@@ -173,7 +202,7 @@ public class CoinbaseProClient extends Thread {
 		String jsonMessageSuffix = "\"}"; // DON'T FORGET ABOUT THE RUN METHOD
 		String jsonMessageFinal = jsonMessagePrefix;
 
-		if (productIDList != null) {
+		if(productIDList != null) {
 
 			for (String each : productIDList) { // SERIALIZE PRODUCT ID LIST
 				jsonMessageFinal = String.join("", jsonMessageFinal, "\"", each, "\",");
@@ -182,39 +211,39 @@ public class CoinbaseProClient extends Thread {
 		}
 		jsonMessageFinal = String.join("", jsonMessageFinal, jsonMessageAfterProductIDs);
 
-		if (useStatus) {
+		if(useStatus) {
 			jsonMessageFinal = String.join("", jsonMessageFinal, "\"status\",");
 		}
 
-		if (useHeartbeat) {
+		if(useHeartbeat) {
 			jsonMessageFinal = String.join("", jsonMessageFinal, "\"heartbeat\",");
 		}
 
-		if (useLevel2) {
+		if(useLevel2) {
 			jsonMessageFinal = String.join("", jsonMessageFinal, "\"level2\",");
 		}
 
-		if (useTicker) {
+		if(useTicker) {
 			jsonMessageFinal = String.join("", jsonMessageFinal, "\"ticker\",");
 		}
 
-		if (useUser) {
+		if(useUser) {
 			jsonMessageFinal = String.join("", jsonMessageFinal, "\"user\",");
 		}
 
-		if (useFull) {
+		if(useFull) {
 			jsonMessageFinal = String.join("", jsonMessageFinal, "\"full\",");
 		}
 
-		if (useAuction) {
+		if(useAuction) {
 			jsonMessageFinal = String.join("", jsonMessageFinal, "\"auctionfeed\",");
 		}
 
-		if (useMatches) {
+		if(useMatches) {
 			jsonMessageFinal = String.join("", jsonMessageFinal, "\"matches\",");
 		}
 
-		if (useStatus || useHeartbeat || useLevel2 || useTicker) {
+		if(useStatus || useHeartbeat || useLevel2 || useTicker) {
 			jsonMessageFinal = jsonMessageFinal.substring(0, jsonMessageFinal.length() - 1); // REMOVE TRAILING COMMA
 		}
 		
@@ -222,7 +251,13 @@ public class CoinbaseProClient extends Thread {
 		SubscriptionMapper entry = new SubscriptionMapper();
 		entry.identifier = identifier;
 		entry.wsClient = subscription;
-		this.subscriptionMap.put(jsonMessageFinal, entry);
+		
+		if(this.subscriptionMap.containsKey(jsonMessageFinal)) { // RECYCLED CONNECTION
+			this.subscriptionMap.replace(jsonMessageFinal, entry);
+			
+		} else { // NEW CLEAN ENTRY
+			this.subscriptionMap.put(jsonMessageFinal, entry);
+		}
 		subscription.connect();
 		
 		if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
@@ -231,10 +266,13 @@ public class CoinbaseProClient extends Thread {
 		jsonMessageFinal = String.join("", jsonMessageFinal, jsonMessageSuffix);
 		
 		while (!subscription.isOpen()) { // WAIT FOR CONNECTION
+			
 			try {
 				Thread.sleep(60);
+				
 			} catch (InterruptedException e) {
 				this.logger("EXCEPTION", e.toString(), e);
+				this.end();
 			}
 		}
 		subscription.send(jsonMessageFinal);
@@ -266,75 +304,77 @@ public class CoinbaseProClient extends Thread {
 	private void dataDecision(CoinbaseAPIResponse pData) { // DATA INSERTION DECISION TREE
 
 		try {
+			this.IS_STREAMING = true;
 
-			if (pData.getType().compareTo("status") == 0) { // CURRENCIES STATUS MESSAGE
+			if(pData.getType().compareTo("status") == 0) { // CURRENCIES STATUS MESSAGE
 				statusMessageRecieved(pData);
 				return;
 			}
 
-			if (pData.getType().compareTo("ticker") == 0) { // INDIVIDUAL PRODUCT TICKER MESSAGE
+			if(pData.getType().compareTo("ticker") == 0) { // INDIVIDUAL PRODUCT TICKER MESSAGE
 				tickerMessageRecieved(pData);
 				return;
 			}
 
-			if (pData.getType().compareTo("l2update") == 0) { // INDIVIDUAL LEVEL2 UPDATE MESSAGE
+			if(pData.getType().compareTo("l2update") == 0) { // INDIVIDUAL LEVEL2 UPDATE MESSAGE
 				l2updateMessageRecieved(pData);
 				return;
 			}
 
-			if (pData.getType().compareTo("snapshot") == 0) { // IRRELIVANT SNAPSHOT MESSAGE
+			if(pData.getType().compareTo("snapshot") == 0) { // IRRELIVANT SNAPSHOT MESSAGE
 				snapshotMessageRecieved(pData);
 				return;
 			}
 
-			if (pData.getType().compareTo("heartbeat") == 0) { // HEARTBEAT MESSAGE
+			if(pData.getType().compareTo("heartbeat") == 0) { // HEARTBEAT MESSAGE
 				heartbeatMessageRecieved(pData);
 				return;
 			}
 
-			if (pData.getType().compareTo("open") == 0) { // HEARTBEAT MESSAGE
+			if(pData.getType().compareTo("open") == 0) { // OPEN MESSAGE
 				openMessageRecieved(pData);
 				return;
 			}
 
-			if (pData.getType().compareTo("received") == 0) { // HEARTBEAT MESSAGE
+			if(pData.getType().compareTo("received") == 0) { // RECIEVED MESSAGE
 				receivedMessageRecieved(pData);
 				return;
 			}
 
-			if (pData.getType().compareTo("done") == 0) { // HEARTBEAT MESSAGE
+			if(pData.getType().compareTo("done") == 0) { // DONE MESSAGE
 				doneMessageRecieved(pData);
 				return;
 			}
 
-			if (pData.getType().compareTo("match") == 0) { // HEARTBEAT MESSAGE
+			if(pData.getType().compareTo("match") == 0) { // MATCH MESSAGE
 				matchMessageRecieved(pData);
 				return;
 			}
 
-			if (pData.getType().compareTo("subscriptions") == 0) { // SUBSCRIPTION MESSAGE
+			if(pData.getType().compareTo("subscriptions") == 0) { // SUBSCRIPTIONS MESSAGE
 				subscriptionsMessageRecieved(pData);
 				return;
 			}
 
-			if (pData.getType().compareTo("last_match") == 0) { // SUBSCRIPTION MESSAGE
+			if(pData.getType().compareTo("last_match") == 0) { // LAST MATCH MESSAGE
 				last_matchMessageRecieved(pData);
 				return;
 			}
 
-			if(this.DATA_RECEIPT) {
-				this.logger("ERROR", "UNRECOGNIZED DATA TYPE RECIEVED: " + pData.getType(), null);
+			if(this.DATA_RECEIPT) { // UNKNOWN SUBSCRIPTION MESSAGE RECIEVED
+				this.logger("ERROR", "UNRECOGNIZED SUBSCRIPTION MESSAGE RECIEVED: " + pData.getType(), null);
 			}
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
+			this.end();
 		}
 	}
 
 	private WebSocketClient subscriptionListener(String identifier) { // LLAMBDA STYLE SUBSCRIPTION LISTENER
 
 		WebSocketClient coinbaseSubscription = null;
-		String subIndent = identifier;
+		String subIdent = identifier;
 
 		try {
 			coinbaseSubscription = new WebSocketClient(new URI(this.coinbaseWebsocketFeedURL)) {
@@ -345,8 +385,8 @@ public class CoinbaseProClient extends Thread {
 					try {
 						CoinbaseAPIResponse returnData = jsonDeserializationSingle(pMessage);
 
-						if (returnData.getType().compareTo("error") == 0) { // RECIEVED ERROR RESPONSE
-							logger("\n\n*** ERROR", "SUBSCRIPTION ERROR RECIEVED:\n***** " + returnData.getMessage() + ":\n***** " + returnData.getReason() + "\n\n", null);
+						if(returnData.getType().compareTo("error") == 0) { // RECIEVED ERROR RESPONSE
+							logger("***** ERROR", "SUBSCRIPTION ERROR RECIEVED: " + returnData.getMessage() + ":\n***** " + returnData.getReason(), null);
 
 						} else { // INJECT DATA
 							dataDecision(returnData);
@@ -354,30 +394,35 @@ public class CoinbaseProClient extends Thread {
 
 					} catch (Exception e) {
 						logger("EXCEPTION", e.toString(), e);
+						end();
 					}
 				}
 
 				@Override
 				public void onOpen(ServerHandshake handshake) {
 
-					logger("Status", "SUBSCRIPTION: " + subIndent + " STARTED", null);
+					logger("Status", "SUBSCRIPTION: " + subIdent + " STARTED", null);
 				}
 
 				@Override
 				public void onClose(int code, String reason, boolean remote) {
 
-					logger("Status", "SUBSCRIPTION: " + subIndent + " CLOSED", null);
+					logger("Status", "SUBSCRIPTION: " + subIdent + " CLOSED", null);
 				}
 
 				@Override
 				public void onError(Exception e) {
 
-					logger("ERROR", "SUBSCRIPTION: " + subIndent + ": " + e.toString(), e);
+					logger("ERROR", "SUBSCRIPTION: " + subIdent + ": " + e.toString() + " RECONNECTING", null);
+					subscribe(subIdent, subscriptionOptionsMap.get(subIdent).productIDList, subscriptionOptionsMap.get(subIdent).useStatus, subscriptionOptionsMap.get(subIdent).useHeartbeat, 
+							subscriptionOptionsMap.get(subIdent).useLevel2, subscriptionOptionsMap.get(subIdent).useFull, subscriptionOptionsMap.get(subIdent).useUser, 
+							subscriptionOptionsMap.get(subIdent).useTicker, subscriptionOptionsMap.get(subIdent).useAuction, subscriptionOptionsMap.get(subIdent).useMatches);
 				}
 			};
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
+			this.end();
 		}
 		return coinbaseSubscription;
 	}
@@ -393,6 +438,7 @@ public class CoinbaseProClient extends Thread {
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
+			this.end();
 		}
 		return jsonMessageFinal;
 	}
@@ -400,7 +446,7 @@ public class CoinbaseProClient extends Thread {
 	// SUBSCRIPTION MESSAGE RECIEVERS
 	private void statusMessageRecieved(CoinbaseAPIResponse pData) { // STATUS MESSAGE RECIEVED
 
-		if(this.DATA_RECEIPT) {
+		if(this.DATA_RECEIPT && !this.QUIET_HEARTBEAT) {
 			this.logger("Status", "DATA RECEIPT: PRODUCT STATUSES UPDATED", null);
 		}
 
@@ -416,26 +462,17 @@ public class CoinbaseProClient extends Thread {
 	private void tickerMessageRecieved(CoinbaseAPIResponse pData) { // TICKER MESSAGE RECIEVED
 
 		if(this.DATA_RECEIPT && !this.QUIET_HEARTBEAT) {
-			this.logger("Status", "DATA RECEIPT: " + pData.getProduct_id().toUpperCase() +" TICKER", null);
+			this.logger("Status", "DATA RECEIPT: " + pData.getProduct_id().toUpperCase() +" TICKER: " + pData.getProduct_id() + " " + pData.getPrice(), null);
 		}
 		this.addPriceMapEntry(pData.getProduct_id(), pData);
-		this.IS_STREAMING = true;
 	}
 
 	private void l2updateMessageRecieved(CoinbaseAPIResponse pData) { // L2UPDATE MESSAGE RECIEVED
 
 		if(this.DATA_RECEIPT && !this.QUIET_HEARTBEAT) {
-			this.logger("Status", "DATA RECEIPT: " + pData.getProduct_id().toUpperCase() + " L2UPDATE", null);
+			this.logger("Status", "DATA RECEIPT: " + pData.getProduct_id().toUpperCase() + " L2UPDATE: " + pData.getProduct_id() + " " + pData.getChanges()[0][1], null);
 		}
 		this.addPriceMapEntry(pData.getProduct_id(), pData);
-		
-		for (String[] each : pData.getChanges()) {
-			this.priceMap.get(pData.getProduct_id()).setSide(each[0]);
-			this.priceMap.get(pData.getProduct_id()).setPrice(Double.valueOf(each[1]));
-			this.priceMap.get(pData.getProduct_id()).setSize(Double.valueOf(each[2]));
-			this.priceMap.get(pData.getProduct_id()).setTime(pData.getTime());
-		}
-		this.IS_STREAMING = true;
 	}
 
 	private void snapshotMessageRecieved(CoinbaseAPIResponse pData) { // SNAPSHOT MESSAGE RECIEVED
@@ -585,15 +622,19 @@ public class CoinbaseProClient extends Thread {
 			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
 					HttpResponse.BodyHandlers.ofString());
 
-			if (response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
+			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
 				returnData = jsonDeserializationSingle(response.body());
 
 			} else { // ERROR RECEIVED
-				this.logger("\n\nERROR", "REST GET FAILURE: " + response.body() + "\n\n", null);
+				if(this.restErrorHandler("getRequest", response.statusCode(), response.body())) {
+					this.logger("RETRYING", "GET REQUEST: " + endpoint + pathParams , null);
+					return getRequest(endpoint, pathParams);
+				}
 			}
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
+			this.end();
 		}
 		return returnData;
 	}
@@ -629,15 +670,19 @@ public class CoinbaseProClient extends Thread {
 			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
 					HttpResponse.BodyHandlers.ofString());
 
-			if (response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
+			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
 				returnData = jsonDeserializationArray(response.body());
 
 			} else { // ERROR RECEIVED
-				this.logger("\n\nERROR", "REST GET FAILURE: " + response.body() + "\n\n", null);
+				if(this.restErrorHandler("getRequestArray", response.statusCode(), response.body())) {
+					this.logger("RETRYING", "GET REQUEST: " + endpoint + pathParams , null);
+					return getRequestArray(endpoint, pathParams);
+				}
 			}
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
+			this.end();
 		}
 		return returnData;
 	}
@@ -673,15 +718,19 @@ public class CoinbaseProClient extends Thread {
 			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
 					HttpResponse.BodyHandlers.ofString());
 
-			if (response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
+			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
 				returnData = jsonDeserializationSingle(response.body());
 
 			} else { // ERROR RECEIVED
-				this.logger("\n\nERROR", "REST POST FAILURE: " + response.body() + "\n\n", null);
+				if(this.restErrorHandler("postRequest", response.statusCode(), response.body())) {
+					this.logger("RETRYING", "POST REQUEST: " + endpoint + requestBody , null);
+					return postRequest(endpoint, requestBody);
+				}
 			}
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
+			this.end();
 		}
 		return returnData;
 	}
@@ -717,22 +766,27 @@ public class CoinbaseProClient extends Thread {
 			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
 					HttpResponse.BodyHandlers.ofString());
 
-			if (response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
+			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
 				returnData = jsonDeserializationArray(response.body());
 
 			} else { // ERROR RECEIVED
-				this.logger("\n\nERROR", "REST POST FAILURE: " + response.body() + "\n\n", null);
+				if(this.restErrorHandler("postRequestArray", response.statusCode(), response.body())) {
+					this.logger("RETRYING", "POST REQUEST: " + endpoint + requestBody , null);
+					return postRequestArray(endpoint, requestBody);
+				}
 			}
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
+			this.end();
 		}
 		return returnData;
 	}
 
-	public CoinbaseAPIResponse deleteRequest(String endpoint, String pathParams) { // PERFORM REST DELETE REQUEST
+	public String deleteRequest(String endpoint, String pathParams) { // PERFORM REST DELETE REQUEST
 
-		CoinbaseAPIResponse returnData = null;
+		// CoinbaseAPIResponse returnData = null;
+		String returnData = null;
 
 		try {
 			HttpRequest request;
@@ -761,59 +815,19 @@ public class CoinbaseProClient extends Thread {
 			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
 					HttpResponse.BodyHandlers.ofString());
 
-			if (response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
-				returnData = jsonDeserializationSingle(response.body());
+			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
+				returnData = response.body().toString();
 
 			} else { // ERROR RECEIVED
-				this.logger("\n\nERROR", "REST DELETE FAILURE: " + response.body() + "\n\n", null);
+				if(this.restErrorHandler("deleteRequest", response.statusCode(), response.body())) {
+					this.logger("RETRYING", "DELETE REQUEST: " + endpoint + pathParams , null);
+					return deleteRequest(endpoint, pathParams);
+				}
 			}
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
-		}
-		return returnData;
-	}
-
-	public CoinbaseAPIResponse[] deleteRequestArray(String endpoint, String pathParams) { // PERFORM REST DELETE REQUEST
-
-		CoinbaseAPIResponse[] returnData = null;
-
-		try {
-			HttpRequest request;
-
-			if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
-				String timeStamp = Instant.now().getEpochSecond() + "";
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("CB-ACCESS-KEY", coinbaseSecretKey)
-						.header("CB-ACCESS-PASSPHRASE", coinbasePassphrase)
-						.header("CB-ACCESS-SIGN", signMessage(timeStamp, "DELETE", String.join("", endpoint, pathParams), ""))
-						.header("CB-ACCESS-TIMESTAMP", timeStamp).header("Accept", "application/json")
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("DELETE", HttpRequest.BodyPublishers.noBody())
-						.build();
-			
-			} else {
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("DELETE", HttpRequest.BodyPublishers.noBody())
-						.build();
-			}
-			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
-					HttpResponse.BodyHandlers.ofString());
-
-			if (response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
-				returnData = jsonDeserializationArray(response.body());
-
-			} else { // ERROR RECEIVED
-				this.logger("\n\nERROR", "REST DELETE FAILURE: " + response.body() + "\n\n", null);
-			}
-
-		} catch (Exception e) {
-			this.logger("EXCEPTION", e.toString(), e);
+			this.end();
 		}
 		return returnData;
 	}
@@ -849,15 +863,19 @@ public class CoinbaseProClient extends Thread {
 			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
 					HttpResponse.BodyHandlers.ofString());
 
-			if (response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
+			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
 				returnData = jsonDeserializationSingle(response.body());
 
 			} else { // ERROR RECEIVED
-				this.logger("\n\nERROR", "REST PUT FAILURE: " + response.body() + "\n\n", null);
+				if(this.restErrorHandler("putRequest", response.statusCode(), response.body())) {
+					this.logger("RETRYING", "PUT REQUEST: " + endpoint + pathParams + "{" + requestBody + "}", null);
+					return putRequest(endpoint, pathParams, requestBody);
+				}
 			}
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
+			this.end();
 		}
 		return returnData;
 	}
@@ -893,23 +911,78 @@ public class CoinbaseProClient extends Thread {
 			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
 					HttpResponse.BodyHandlers.ofString());
 
-			if (response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
+			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
 				returnData = jsonDeserializationArray(response.body());
 
 			} else { // ERROR RECEIVED
-				this.logger("\n\nERROR", "REST PUT FAILURE: " + response.body() + "\n\n", null);
+				if(this.restErrorHandler("putRequestArray", response.statusCode(), response.body())) {
+					this.logger("RETRYING", "PUT REQUEST: " + endpoint + pathParams + "{" + requestBody + "}", null);
+					return putRequestArray(endpoint, pathParams, requestBody);
+				}
 			}
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
+			this.end();
 		}
 		return returnData;
 	}
 
+	private Boolean restErrorHandler(String callingMethod, Integer statusCode, String responseBody) { // REST SUB-SYSTEM ERROR HANDLING (RETURNS TRUE IS RETRY IS CALLED FOR)
+		
+		Boolean messageHandled = false;
+		Boolean attemptResend = false;
+		
+		if(callingMethod.compareTo("putRequestArray") == 0) {
+			this.logger("ERROR", "REST PUT FAILURE: " + statusCode + ": " + responseBody, null);
+			messageHandled = true;
+		}
+		
+		if(callingMethod.compareTo("putRequest") == 0) {
+			this.logger("ERROR", "REST PUT FAILURE: " + statusCode + ": " + responseBody, null);
+			messageHandled = true;			
+		}
+
+		if(callingMethod.compareTo("deleteRequest") == 0) {
+			this.logger("ERROR", "REST DELETE FAILURE: " + statusCode + ": " + responseBody, null);
+			messageHandled = true;
+		}
+		
+		if(callingMethod.compareTo("postRequestArray") == 0) {
+			this.logger("ERROR", "REST POST FAILURE: " + statusCode + ": " + responseBody, null);
+			messageHandled = true;
+		}
+		
+		if(callingMethod.compareTo("postRequest") == 0) {
+			this.logger("ERROR", "REST POST FAILURE: " + statusCode + ": " + responseBody, null);
+			messageHandled = true;
+		}
+
+		if(callingMethod.compareTo("getRequestArray") == 0) {
+			this.logger("ERROR", "REST GET FAILURE: " + statusCode + ": " + responseBody, null);
+			messageHandled = true;
+		}
+
+		if(callingMethod.compareTo("getRequest") == 0) {
+			this.logger("ERROR", "REST GET FAILURE: " + statusCode + ": " + responseBody, null);
+			messageHandled = true;
+		}
+		
+		if(!messageHandled) {
+			this.logger("ERROR", "UNHANDLED MESSAGE: METHOD: " + callingMethod + ": " + statusCode + ": " + responseBody, null);
+		}
+		
+		if(responseBody.contains("request timestamp expired") || responseBody.contains("502 Bad Gateway")) {
+			attemptResend = true;
+		}
+		
+		return attemptResend;
+	}
+	
 	// DATA MAPPING
 	private Boolean addCurrencyMapping(String addThisKEY, CoinbaseAPIResponse.Currency addThisVALUE) { // ADD TO CURRENCY MAP
 
-		if (this.currencyMap.containsKey(addThisKEY)) { // ENTRY DETECTED
+		if(this.currencyMap.containsKey(addThisKEY)) { // ENTRY DETECTED
 			this.currencyMap.replace(addThisKEY, addThisVALUE);
 			
 		} else {
@@ -920,7 +993,7 @@ public class CoinbaseProClient extends Thread {
 
 	private Boolean addProductMapping(String addThisKEY, CoinbaseAPIResponse.Products addThisVALUE) { // ADD TO PRODUCT MAP
 
-		if (this.productMap.containsKey(addThisKEY)) { // ENTRY DETECTED
+		if(this.productMap.containsKey(addThisKEY)) { // ENTRY DETECTED
 			this.productMap.replace(addThisKEY, addThisVALUE);
 			
 		} else {
@@ -931,7 +1004,7 @@ public class CoinbaseProClient extends Thread {
 
 	private Boolean addPriceMapEntry(String addThisKEY, CoinbaseAPIResponse addThisVALUE) { // ADD TO PRICE MAP
 
-		if (!this.priceMap.containsKey(addThisKEY)) { // NO ENTRY DETECTED
+		if(!this.priceMap.containsKey(addThisKEY)) { // NO ENTRY DETECTED
 			this.priceMap.put(addThisKEY, addThisVALUE);
 		
 		} else {
@@ -942,7 +1015,7 @@ public class CoinbaseProClient extends Thread {
 
 	private Boolean addOrderBookEntry(String addThisKEY, CoinbaseAPIResponse addThisVALUE) { // ADD ORDER BOOK ENTRY
 
-		if (!this.orderBook.containsKey(addThisKEY)) { // NO ENTRY DETECTED
+		if(!this.orderBook.containsKey(addThisKEY)) { // NO ENTRY DETECTED
 			this.orderBook.put(addThisKEY, addThisVALUE);
 		
 		} else {
@@ -959,48 +1032,49 @@ public class CoinbaseProClient extends Thread {
 		return !this.orderBook.containsKey(KEY);
 	}
 
-	/* UNUSED DATA MAPPING REMOVAL METHODS NOT READY TO DELETE THESE JUST YET
-	private Boolean removeProductMapping(String KEY) { // REMOVE PRODUCT MAPPING
-
-		this.productMap.remove(KEY);
-		return !this.productMap.containsKey(KEY);
-	}
-
-	private Boolean removeCurrencyMapping(String KEY) { // REMOVE CURRENCY MAPPING
-
-		this.currencyMap.remove(KEY);
-		return !this.currencyMap.containsKey(KEY);
-	}
-
-	private Boolean removePriceMapEntry(String KEY) { // REMOVE PRICE MAPPING
-
-		this.priceMap.remove(KEY);
-		return !this.priceMap.containsKey(KEY);
-	}*/
-
 	// DATA RETREIVAL
-	public Map<String, CoinbaseAPIResponse.Currency> getCurrencyMap() { // RETRIEVE CURRENCY MAP
+	public Map<String, CoinbaseAPIResponse.Currency> getCurrencyMap() // RETRIEVE CURRENCY MAP 
+			throws InterruptedException {
 
+		while(this.currencyMap.isEmpty() || !this.isStreaming()) {
+			Thread.sleep(60);
+		}
 		return this.currencyMap;
 	}
 
-	public Map<String, CoinbaseAPIResponse.Products> getProductMap() { // RETRIEVE PRODUCT MAP
-
+	public Map<String, CoinbaseAPIResponse.Products> getProductMap() // RETRIEVE PRODUCT MAP 
+			throws InterruptedException { 
+		
+		while(this.productMap.isEmpty() || !this.isStreaming()) {
+			Thread.sleep(60);
+		}
 		return this.productMap;
 	}
 	
-	public Map<String, SubscriptionMapper> getSubscriptionMap() { // RETRIEVE SUBSCRIPTION MAP
+	public Map<String, SubscriptionMapper> getSubscriptionMap() // RETRIEVE SUBSCRIPTION MAP 
+			throws InterruptedException {
 		
+		while(this.subscriptionMap.isEmpty() || !this.isStreaming()) {
+			Thread.sleep(60);
+		}
 		return this.subscriptionMap;
 	}
 	
-	public Map<String, CoinbaseAPIResponse> getPriceMap() { // RETRIEVE PRICE MAP
+	public Map<String, CoinbaseAPIResponse> getPriceMap() // RETRIEVE PRICE MAP 
+			throws InterruptedException { 
 		
+		while(this.priceMap.isEmpty() || !this.isStreaming()) {
+			Thread.sleep(60);
+		}
 		return this.priceMap;
 	}
 
-	public Map<String, CoinbaseAPIResponse> getOrderBook() { // RETRIEVE ORDER BOOK
+	public Map<String, CoinbaseAPIResponse> getOrderBook() // RETRIEVE ORDER BOOK 
+			throws InterruptedException {
 		
+		while(this.orderBook.isEmpty() || !this.isStreaming()) {
+			Thread.sleep(60);
+		}
 		return this.orderBook;
 	}
 	
@@ -1074,6 +1148,9 @@ public class CoinbaseProClient extends Thread {
 	private void logger(String reason, String message, Exception e) { // CONSOLE MESSAGING
 		
 		if(LOGGER_LEVEL == true) {
+			Calendar c = Calendar.getInstance();
+			System.out.print(c.get(Calendar.YEAR) + "-" + (c.get(Calendar.MONTH) + 1) + "-" + c.get(Calendar.DAY_OF_MONTH) + " " + 
+					c.get(Calendar.HOUR_OF_DAY) + ":" + c.get(Calendar.MINUTE) + ":" + c.get(Calendar.SECOND) + " ");
 			System.out.println(reason + ": " + message);
 			
 			if(e != null) {
