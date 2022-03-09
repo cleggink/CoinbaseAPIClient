@@ -1,9 +1,9 @@
 package com.Zeus.CoinbaseProClientAPI;
 
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.net.URL;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -13,6 +13,8 @@ import java.util.HashMap;
 import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import javax.net.ssl.HttpsURLConnection;
+
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -596,38 +598,17 @@ public class CoinbaseProClient extends Thread {
 		CoinbaseAPIResponse returnData = null;
 
 		try {
-			HttpRequest request;
-			
-			if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
-				String timeStamp = Instant.now().getEpochSecond() + "";
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("CB-ACCESS-KEY", coinbaseSecretKey)
-						.header("CB-ACCESS-PASSPHRASE", coinbasePassphrase)
-						.header("CB-ACCESS-SIGN", signMessage(timeStamp, "GET", String.join("", endpoint, pathParams), ""))
-						.header("CB-ACCESS-TIMESTAMP", timeStamp).header("Accept", "application/json")
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("GET", HttpRequest.BodyPublishers.noBody())
-						.build();
-				
-			} else {
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("GET", HttpRequest.BodyPublishers.noBody())
-						.build();
-			}
-			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
-					HttpResponse.BodyHandlers.ofString());
+			String[] response = this.commonREST("GET", endpoint, pathParams, "");
+			String responseBody = response[0];
+			Integer responseCode = Integer.valueOf(response[1]);
 
-			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
-				returnData = jsonDeserializationSingle(response.body());
+			if(responseCode == 200) { // CLEAN RESPONSE RECIEVED
+				returnData = jsonDeserializationSingle(responseBody);
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("getRequest", response.statusCode(), response.body(), endpoint + pathParams)) {
-					this.logger("RETRYING", "GET REQUEST: " + endpoint + pathParams , null);
+				
+				if(this.restErrorHandler("getRequest", responseCode, responseBody, endpoint + pathParams)) {
+					this.logger("RETRYING", "GET REQUEST: " + endpoint + pathParams, null);
 					return getRequest(endpoint, pathParams);
 				}
 			}
@@ -644,38 +625,17 @@ public class CoinbaseProClient extends Thread {
 		CoinbaseAPIResponse[] returnData = null;
 
 		try {
-			HttpRequest request;
-			
-			if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
-				String timeStamp = Instant.now().getEpochSecond() + "";
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("CB-ACCESS-KEY", coinbaseSecretKey)
-						.header("CB-ACCESS-PASSPHRASE", coinbasePassphrase)
-						.header("CB-ACCESS-SIGN", signMessage(timeStamp, "GET", String.join("", endpoint, pathParams), ""))
-						.header("CB-ACCESS-TIMESTAMP", timeStamp).header("Accept", "application/json")
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("GET", HttpRequest.BodyPublishers.noBody())
-						.build();
-				
-			} else {
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("GET", HttpRequest.BodyPublishers.noBody())
-						.build();
-			}
-			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
-					HttpResponse.BodyHandlers.ofString());
+			String[] response = this.commonREST("GET", endpoint, pathParams, "");
+			String responseBody = response[0];
+			Integer responseCode = Integer.valueOf(response[1]);
 
-			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
-				returnData = jsonDeserializationArray(response.body());
+			if(responseCode == 200) { // CLEAN RESPONSE RECIEVED
+				returnData = jsonDeserializationArray(responseBody);
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("getRequestArray", response.statusCode(), response.body(), endpoint + pathParams)) {
-					this.logger("RETRYING", "GET REQUEST: " + endpoint + pathParams , null);
+				
+				if(this.restErrorHandler("getRequestArray", responseCode, responseBody, endpoint + pathParams)) {
+					this.logger("RETRYING", "GET REQUEST: " + endpoint + pathParams, null);
 					return getRequestArray(endpoint, pathParams);
 				}
 			}
@@ -692,37 +652,16 @@ public class CoinbaseProClient extends Thread {
 		CoinbaseAPIResponse returnData = null;
 
 		try {
-			HttpRequest request;
+			String[] response = this.commonREST("POST", endpoint, "", requestBody);
+			String responseBody = response[0];
+			Integer responseCode = Integer.valueOf(response[1]);
 
-			if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
-				String timeStamp = Instant.now().getEpochSecond() + "";
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint)))
-						.header("CB-ACCESS-KEY", coinbaseSecretKey)
-						.header("CB-ACCESS-PASSPHRASE", coinbasePassphrase)
-						.header("CB-ACCESS-SIGN", signMessage(timeStamp, "POST", endpoint, requestBody))
-						.header("CB-ACCESS-TIMESTAMP", timeStamp).header("Accept", "application/json")
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("POST", HttpRequest.BodyPublishers.ofString(requestBody))
-						.build();
-			
-			} else {
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint)))
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("POST", HttpRequest.BodyPublishers.ofString(requestBody))
-						.build();
-			}
-			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
-					HttpResponse.BodyHandlers.ofString());
-
-			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
-				returnData = jsonDeserializationSingle(response.body());
+			if(responseCode == 200) { // CLEAN RESPONSE RECIEVED
+				returnData = jsonDeserializationSingle(responseBody);
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("postRequest", response.statusCode(), response.body(), endpoint + requestBody)) {
+				
+				if(this.restErrorHandler("postRequest", responseCode, responseBody, endpoint + requestBody)) {
 					this.logger("RETRYING", "POST REQUEST: " + endpoint + requestBody , null);
 					return postRequest(endpoint, requestBody);
 				}
@@ -740,37 +679,16 @@ public class CoinbaseProClient extends Thread {
 		CoinbaseAPIResponse[] returnData = null;
 
 		try {
-			HttpRequest request;
+			String[] response = this.commonREST("POST", endpoint, "", requestBody);
+			String responseBody = response[0];
+			Integer responseCode = Integer.valueOf(response[1]);
 
-			if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
-				String timeStamp = Instant.now().getEpochSecond() + "";
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint)))
-						.header("CB-ACCESS-KEY", coinbaseSecretKey)
-						.header("CB-ACCESS-PASSPHRASE", coinbasePassphrase)
-						.header("CB-ACCESS-SIGN", signMessage(timeStamp, "POST", endpoint, requestBody))
-						.header("CB-ACCESS-TIMESTAMP", timeStamp).header("Accept", "application/json")
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("POST", HttpRequest.BodyPublishers.ofString(requestBody))
-						.build();
-			
-			} else {
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint)))
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("POST", HttpRequest.BodyPublishers.ofString(requestBody))
-						.build();
-			}
-			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
-					HttpResponse.BodyHandlers.ofString());
-
-			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
-				returnData = jsonDeserializationArray(response.body());
+			if(responseCode == 200) { // CLEAN RESPONSE RECIEVED
+				returnData = jsonDeserializationArray(responseBody);
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("postRequestArray", response.statusCode(), response.body(), endpoint + requestBody)) {
+				
+				if(this.restErrorHandler("postRequestArray", responseCode, responseBody, endpoint + requestBody)) {
 					this.logger("RETRYING", "POST REQUEST: " + endpoint + requestBody , null);
 					return postRequestArray(endpoint, requestBody);
 				}
@@ -785,41 +703,19 @@ public class CoinbaseProClient extends Thread {
 
 	public String deleteRequest(String endpoint, String pathParams) { // PERFORM REST DELETE REQUEST
 
-		// CoinbaseAPIResponse returnData = null;
 		String returnData = null;
 
 		try {
-			HttpRequest request;
+			String[] response = this.commonREST("DELETE", endpoint, pathParams, "");
+			String responseBody = response[0];
+			Integer responseCode = Integer.valueOf(response[1]);
 
-			if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
-				String timeStamp = Instant.now().getEpochSecond() + "";
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("CB-ACCESS-KEY", coinbaseSecretKey)
-						.header("CB-ACCESS-PASSPHRASE", coinbasePassphrase)
-						.header("CB-ACCESS-SIGN", signMessage(timeStamp, "DELETE", String.join("", endpoint, pathParams), ""))
-						.header("CB-ACCESS-TIMESTAMP", timeStamp).header("Accept", "application/json")
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("DELETE", HttpRequest.BodyPublishers.noBody())
-						.build();
-			
-			} else {
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("DELETE", HttpRequest.BodyPublishers.noBody())
-						.build();
-			}
-			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
-					HttpResponse.BodyHandlers.ofString());
-
-			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
-				returnData = response.body().toString();
-
+			if(responseCode == 200) { // CLEAN RESPONSE RECIEVED
+				returnData = responseBody;
+						;
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("deleteRequest", response.statusCode(), response.body(), endpoint + pathParams)) {
+				
+				if(this.restErrorHandler("deleteRequest", responseCode, responseBody, endpoint + pathParams)) {
 					this.logger("RETRYING", "DELETE REQUEST: " + endpoint + pathParams , null);
 					return deleteRequest(endpoint, pathParams);
 				}
@@ -837,37 +733,15 @@ public class CoinbaseProClient extends Thread {
 		CoinbaseAPIResponse returnData = null;
 
 		try {
-			HttpRequest request;
+			String[] response = this.commonREST("PUT", endpoint, pathParams, requestBody);
+			String responseBody = response[0];
+			Integer responseCode = Integer.valueOf(response[1]);
 
-			if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
-				String timeStamp = Instant.now().getEpochSecond() + "";
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("CB-ACCESS-KEY", coinbaseSecretKey)
-						.header("CB-ACCESS-PASSPHRASE", coinbasePassphrase)
-						.header("CB-ACCESS-SIGN", signMessage(timeStamp, "PUT", endpoint + pathParams, requestBody))
-						.header("CB-ACCESS-TIMESTAMP", timeStamp).header("Accept", "application/json")
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("PUT", HttpRequest.BodyPublishers.ofString(requestBody))
-						.build();
-			
-			} else {
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("PUT", HttpRequest.BodyPublishers.ofString(requestBody))
-						.build();
-			}
-			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
-					HttpResponse.BodyHandlers.ofString());
-
-			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
-				returnData = jsonDeserializationSingle(response.body());
+			if(responseCode == 200) { // CLEAN RESPONSE RECIEVED
+				returnData = jsonDeserializationSingle(responseBody);
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("putRequest", response.statusCode(), response.body(), endpoint + pathParams + "{" + requestBody + "}")) {
+				if(this.restErrorHandler("putRequest", responseCode, responseBody, endpoint + pathParams + "{" + requestBody + "}")) {
 					this.logger("RETRYING", "PUT REQUEST: " + endpoint + pathParams + "{" + requestBody + "}", null);
 					return putRequest(endpoint, pathParams, requestBody);
 				}
@@ -885,37 +759,15 @@ public class CoinbaseProClient extends Thread {
 		CoinbaseAPIResponse[] returnData = null;
 
 		try {
-			HttpRequest request;
+			String[] response = this.commonREST("PUT", endpoint, pathParams, requestBody);
+			String responseBody = response[0];
+			Integer responseCode = Integer.valueOf(response[1]);
 
-			if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
-				String timeStamp = Instant.now().getEpochSecond() + "";
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("CB-ACCESS-KEY", coinbaseSecretKey)
-						.header("CB-ACCESS-PASSPHRASE", coinbasePassphrase)
-						.header("CB-ACCESS-SIGN", signMessage(timeStamp, "PUT", endpoint + pathParams, requestBody))
-						.header("CB-ACCESS-TIMESTAMP", timeStamp).header("Accept", "application/json")
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("PUT", HttpRequest.BodyPublishers.ofString(requestBody))
-						.build();
-			
-			} else {
-				request = HttpRequest.newBuilder()
-						.uri(URI.create(String.join("", coinbaseProBaseURL, endpoint, pathParams)))
-						.header("Content-Type", "application/json")
-						.header("Accept", "application/json")
-						.method("PUT", HttpRequest.BodyPublishers.ofString(requestBody))
-						.build();
-			}
-			HttpResponse<String> response = HttpClient.newHttpClient().send(request,
-					HttpResponse.BodyHandlers.ofString());
-
-			if(response.statusCode() == 200) { // CLEAN RESPONSE RECIEVED
-				returnData = jsonDeserializationArray(response.body());
+			if(responseCode == 200) { // CLEAN RESPONSE RECIEVED
+				returnData = jsonDeserializationArray(responseBody);
 
 			} else { // ERROR RECEIVED
-				if(this.restErrorHandler("putRequestArray", response.statusCode(), response.body(), endpoint + pathParams + "{" + requestBody + "}")) {
+				if(this.restErrorHandler("putRequestArray", responseCode, responseBody, endpoint + pathParams + "{" + requestBody + "}")) {
 					this.logger("RETRYING", "PUT REQUEST: " + endpoint + pathParams + "{" + requestBody + "}", null);
 					return putRequestArray(endpoint, pathParams, requestBody);
 				}
@@ -926,6 +778,40 @@ public class CoinbaseProClient extends Thread {
 			this.end();
 		}
 		return returnData;
+	}
+	
+	private String[] commonREST(String method, String endpoint, String pathParams, String requestBody) // COMMON REST REQUEST IMPLIMENTATION
+			throws InvalidKeyException, NoSuchAlgorithmException, IOException {
+		
+		HttpsURLConnection connection =
+				(HttpsURLConnection) new URL(String.join("", coinbaseProBaseURL, endpoint + pathParams)).openConnection();
+		connection.setRequestMethod(method);
+		connection.setRequestProperty("Content-Type", "application/json");
+		connection.setRequestProperty("Accept", "application/json");
+		
+		if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
+			String timeStamp = String.valueOf(Instant.now().getEpochSecond());
+			connection.setRequestProperty("CB-ACCESS-KEY", coinbaseSecretKey);
+			connection.setRequestProperty("CB-ACCESS-PASSPHRASE", coinbasePassphrase);
+			connection.setRequestProperty("CB-ACCESS-SIGN", signMessage(timeStamp, method, endpoint + pathParams, requestBody));
+			connection.setRequestProperty("CB-ACCESS-TIMESTAMP", timeStamp);
+		}
+		
+		if(method.compareTo("PUT") == 0 || method.compareTo("POST") == 0) { // HANDLE BODY MESSAGE
+			connection.setDoOutput(true);
+			connection.getOutputStream().write(requestBody.getBytes());
+		}
+		String[] response = new String[3];
+		response[0] = "";
+		InputStreamReader responseReader = new InputStreamReader(connection.getInputStream(), "UTF-8");
+
+		for(int nextChar = responseReader.read(); nextChar >= 0; nextChar = responseReader.read()) {
+			response[0] = response[0] + (char)nextChar;
+		} // READING STREAM ONE CHAR AT A TIME
+		response[1] = String.valueOf(connection.getResponseCode());
+		response[2] = connection.getResponseMessage();
+		connection.disconnect();
+		return response;
 	}
 
 	private Boolean restErrorHandler(String callingMethod, Integer statusCode, String responseBody, String request) { // REST SUB-SYSTEM ERROR HANDLING (RETURNS TRUE IS RETRY IS CALLED FOR)
