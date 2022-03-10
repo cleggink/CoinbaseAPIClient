@@ -260,6 +260,7 @@ public class CoinbaseProClient extends Thread {
 		} else { // NEW CLEAN ENTRY
 			this.subscriptionMap.put(jsonMessageFinal, entry);
 		}
+		subscription.setConnectionLostTimeout(-1);
 		subscription.connect();
 		
 		if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
@@ -409,7 +410,7 @@ public class CoinbaseProClient extends Thread {
 				@Override
 				public void onClose(int code, String reason, boolean remote) {
 
-					logger("Status", "SUBSCRIPTION: " + subIdent + " CLOSED", null);
+					logger("Status", "SUBSCRIPTION: " + subIdent + " CLOSED: " + code + ": " + reason, null);
 				}
 
 				@Override
