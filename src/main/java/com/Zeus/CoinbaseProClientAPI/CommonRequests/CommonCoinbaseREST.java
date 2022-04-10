@@ -45,6 +45,12 @@ public class CommonCoinbaseREST {
 				"\",\"type\":\"market\",\"side\":\"buy\",\"post_only\":\"false\",\"product_id\":\"", productID , "\",\"funds\":\"", balance ,"\"}"));
 	}
 	
+	public CoinbaseAPIResponse marketSellOrder(String productID, String balance) { // EXECUTE MARKET ORDER
+		
+		return this.ACCOUNT.postRequest("/orders", String.join("", "{\"profile_id\":\"", this.PROFILE_ID,
+				"\",\"type\":\"market\",\"side\":\"sell\",\"post_only\":\"false\",\"product_id\":\"", productID , "\",\"size\":\"", balance ,"\"}"));
+	}
+	
 	public CoinbaseAPIResponse stopEntryLimitOrder(String productID, String trigger, String value, String balance) { // STOP ENTRY LIMIT SELL ORDER
 		
 		return this.ACCOUNT.postRequest("/orders", String.join("", "{\"profile_id\":\"", this.PROFILE_ID,

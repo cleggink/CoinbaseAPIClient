@@ -68,6 +68,7 @@ public class CoinbaseProClient extends Thread {
 	private Boolean QUIET_HEARTBEAT; 
 	private Integer SAURON_TIMER;
 	private Boolean IS_STREAMING;
+	private Boolean ANDROIID_COMPAT;
 
 	// CONSTRUCTION
 	public CoinbaseProClient(String baseURL, String wsFeedURL, String secretKey, String apiKey, String passphrase) { // PASS API CREDENTIALS AND URLS
@@ -101,6 +102,7 @@ public class CoinbaseProClient extends Thread {
 		this.disableDataMessages();
 		this.enableDeserializationIgnoreExeceptions();
 		this.disablePulseCheck();
+		this.disableAndroid();
 		this.subscriptionOptionsMap = new HashMap<String, SubscriptionOptionsMapper>();
 		this.subscriptionMap = new HashMap<String, SubscriptionMapper>();
 		this.currencyMap = new HashMap<String, CoinbaseAPIResponse.Currency>();
@@ -160,7 +162,6 @@ public class CoinbaseProClient extends Thread {
 							
 							} catch (InterruptedException e) {
 								this.logger("EXCEPTION", e.toString(), e);
-								this.end();
 							}
 						}
 						value.wsClient.send(jsonMessageFinal);
@@ -169,10 +170,10 @@ public class CoinbaseProClient extends Thread {
 				
 			} catch (Exception e) {
 				this.logger("EXCEPTION", e.toString(), e);
-				this.end();
 			}
 		}
 		this.unsubscribeAll();
+		this.end();
 	}
 
 	public void end() { // END THREAD
@@ -260,7 +261,10 @@ public class CoinbaseProClient extends Thread {
 		} else { // NEW CLEAN ENTRY
 			this.subscriptionMap.put(jsonMessageFinal, entry);
 		}
-		subscription.setConnectionLostTimeout(-1);
+		
+		if(this.ANDROIID_COMPAT) {
+			subscription.setConnectionLostTimeout(-1);
+		}
 		subscription.connect();
 		
 		if(this.coinbaseAPIKey != null) { // SECURITY CREDENTIALS PRESENT
@@ -275,7 +279,6 @@ public class CoinbaseProClient extends Thread {
 				
 			} catch (InterruptedException e) {
 				this.logger("EXCEPTION", e.toString(), e);
-				this.end();
 			}
 		}
 		subscription.send(jsonMessageFinal);
@@ -370,7 +373,6 @@ public class CoinbaseProClient extends Thread {
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
-			this.end();
 		}
 	}
 
@@ -397,7 +399,6 @@ public class CoinbaseProClient extends Thread {
 
 					} catch (Exception e) {
 						logger("EXCEPTION", e.toString(), e);
-						end();
 					}
 				}
 
@@ -425,7 +426,6 @@ public class CoinbaseProClient extends Thread {
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
-			this.end();
 		}
 		return coinbaseSubscription;
 	}
@@ -441,7 +441,6 @@ public class CoinbaseProClient extends Thread {
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
-			this.end();
 		}
 		return jsonMessageFinal;
 	}
@@ -616,7 +615,6 @@ public class CoinbaseProClient extends Thread {
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
-			this.end();
 		}
 		return returnData;
 	}
@@ -643,7 +641,6 @@ public class CoinbaseProClient extends Thread {
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
-			this.end();
 		}
 		return returnData;
 	}
@@ -670,7 +667,6 @@ public class CoinbaseProClient extends Thread {
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
-			this.end();
 		}
 		return returnData;
 	}
@@ -697,7 +693,6 @@ public class CoinbaseProClient extends Thread {
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
-			this.end();
 		}
 		return returnData;
 	}
@@ -724,7 +719,6 @@ public class CoinbaseProClient extends Thread {
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
-			this.end();
 		}
 		return returnData;
 	}
@@ -750,7 +744,6 @@ public class CoinbaseProClient extends Thread {
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
-			this.end();
 		}
 		return returnData;
 	}
@@ -776,7 +769,6 @@ public class CoinbaseProClient extends Thread {
 
 		} catch (Exception e) {
 			this.logger("EXCEPTION", e.toString(), e);
-			this.end();
 		}
 		return returnData;
 	}
@@ -1035,8 +1027,16 @@ public class CoinbaseProClient extends Thread {
 	
 	// LOGGER
 	private void logger(String reason, String message, Exception e) { // CONSOLE MESSAGING
+		Boolean cont = true;
 		
-		if(LOGGER_LEVEL == true) {
+		if(e != null) {
+			
+			if(e.toString().contains("FileNotFound")) {
+				cont = false;
+			}
+		}
+		
+		if(LOGGER_LEVEL == true && cont == true) {
 			Calendar c = Calendar.getInstance();
 			System.out.print(c.get(Calendar.YEAR) + "-" + (c.get(Calendar.MONTH) + 1) + "-" + c.get(Calendar.DAY_OF_MONTH) + " " + 
 					c.get(Calendar.HOUR_OF_DAY) + ":" + c.get(Calendar.MINUTE) + ":" + c.get(Calendar.SECOND) + " ");
@@ -1086,5 +1086,16 @@ public class CoinbaseProClient extends Thread {
 	public void disablePulseCheck() { // DISABLE HEARTBEAT DATA RECEIPT MESSAGES
 		
 		this.QUIET_HEARTBEAT = true;
+	}
+
+	// ANDROIID COMPATIBILITY TIMER
+	public void enableAndroid() {
+		
+		this.ANDROIID_COMPAT = true;
+	}
+	
+	public void disableAndroid() {
+		
+		this.ANDROIID_COMPAT = false;
 	}
 }
