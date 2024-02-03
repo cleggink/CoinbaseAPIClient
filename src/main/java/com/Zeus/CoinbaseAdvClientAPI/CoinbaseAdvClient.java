@@ -340,8 +340,9 @@ public class CoinbaseAdvClient {
 
 				@Override
 				public void onOpen(ServerHandshake handshake) {
-
+					
 					logger("Status", "SUBSCRIPTION: " + subIdent + " STARTED", null);
+					setName();
 				}
 				
 				@Override
@@ -357,23 +358,36 @@ public class CoinbaseAdvClient {
 					recycleConnection();
 				}
 				
+				public void setName() {
+
+					Thread.currentThread().setName(subIdent + " WebSocket Listener");
+				}
+				
 				public void recycleConnection() {
 
 					if (!recycle) {
 						return;
 					}
 					IS_STREAMING = false;
+					int x =  0;
 					
 					while(SUB_HOLD) {
 						
 						try {
 							Thread.sleep(1000);
+							x++;
 							
+							if(x < 300) {
+								SUB_HOLD = false;
+								unsubscribeAll();
+								return;
+							}		
 						} catch (InterruptedException e) {
 							e.printStackTrace();
 						}
 					}
 					SUB_HOLD = true;
+					this.getConnection().close();
 					String[] list = subscriptionOptionsMap.get(subIdent).productIDList;
 					String channel = subscriptionOptionsMap.get(subIdent).channel;
 					subscriptionMap.remove(subscriptionOptionsMap.get(subIdent).wsMessage);
@@ -386,6 +400,7 @@ public class CoinbaseAdvClient {
 						e.printStackTrace();
 					}
 					SUB_HOLD = false;
+					setName();
 				}
 			};
 
@@ -789,9 +804,16 @@ public class CoinbaseAdvClient {
 	
 	public Map<String, CoinbaseAPIResponse> getPriceMap() // RETRIEVE PRICE MAP
 			throws InterruptedException {
+		
+		Integer count = 0;
 
 		while (this.priceMap.isEmpty() || !this.isStreaming()) {
 			Thread.sleep(60);
+			count++;
+			
+			if(count > this.RATE_LIMIT_TIMER * 5) {
+				return null;
+			}
 		}
 		return this.priceMap;
 	}

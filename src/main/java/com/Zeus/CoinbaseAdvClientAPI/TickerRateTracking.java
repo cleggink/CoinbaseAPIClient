@@ -1,8 +1,7 @@
 package com.Zeus.CoinbaseAdvClientAPI;
 
-import java.time.Instant;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.time.Instant;
 import java.util.Map;
 import java.util.HashMap;
 
@@ -13,14 +12,18 @@ public class TickerRateTracking {
 		Integer ticks;
 		Double rate;
 		Long timeStart;
+		Boolean stalled;
+		Integer stalledTimer;
 	}
 	private Map<String, TickerData> data;
-	Boolean hold;
+	private Boolean hold;
+	private Integer minTicks;
 
-	public TickerRateTracking() {
+ 	public TickerRateTracking() {
 		
 		this.data = new HashMap<String, TickerData>();
 		this.hold = false;
+		this.minTicks = 100;
 	}
 	
 	public void resetData(String product) throws InterruptedException {
@@ -29,21 +32,50 @@ public class TickerRateTracking {
 			return;
 		}
 		this.blocking();
-		this.data.replace(product, this.dataInit());
+		this.data.get(product).rate = 0.0;
+		this.data.get(product).ticks = 0;
+		this.data.get(product).timeStart = Instant.now().getEpochSecond();;
 		this.hold = false;
+	}
+
+	public void setMinTicks(Integer min) {
+		
+		this.minTicks = min;
+	}
+	
+	public void setStalledTimer(String product, Integer seconds) {
+		
+		this.data.get(product).stalledTimer = seconds;
 	}
 	
 	public Double getRatePerSec(String product) throws InterruptedException {
 				
-		while(this.data.get(product).ticks < 100) {
+		this.data.get(product).stalled = false;
+		long testTime = Instant.now().getEpochSecond();
+		
+		while(this.data.get(product).ticks < this.minTicks) {
+			
+			if(Instant.now().getEpochSecond() > testTime + this.data.get(product).stalledTimer) {
+				this.data.get(product).stalled = true;
+				return -1.0;		
+			}
 			Thread.sleep(100);
 		}
 		this.blocking();
 		this.data.get(product).rate = this.calcRate(product);
 		this.hold = false;
 		Double returnRate = this.data.get(product).rate;
+		this.calcStallTimer(product);
 		this.resetData(product);
 		return returnRate;
+	}
+	
+	private void calcStallTimer(String product) {
+
+		if(this.data.get(product).rate > 0.0) {
+			this.setStalledTimer(product, 
+					new BigDecimal((this.minTicks / this.data.get(product).rate) * 2.0).intValue());
+		}
 	}
 	
 	private Double calcRate(String product) throws InterruptedException {
@@ -93,6 +125,8 @@ public class TickerRateTracking {
 		TickerData returnVal = new TickerData();
 		returnVal.ticks = 0;
 		returnVal.rate = 0.0;
+		returnVal.stalled = false;
+		returnVal.stalledTimer = 600000;
 		returnVal.timeStart = Instant.now().getEpochSecond();
 		return returnVal;
 	}	
