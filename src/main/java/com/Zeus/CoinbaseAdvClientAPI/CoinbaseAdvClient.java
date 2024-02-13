@@ -181,7 +181,14 @@ public class CoinbaseAdvClient {
 			jsonMessageFinal = subscriptionAuth(jsonMessageFinal, productIDList, channel);
 		}
 		jsonMessageFinal = String.join("", jsonMessageFinal, jsonMessageSuffix);
-		subscription.send(jsonMessageFinal);
+		
+		try {
+			subscription.send(jsonMessageFinal);
+			
+		} catch (Exception e) {
+			this.unsubscribeAll();
+			return null;
+		}
 		
 		if(channel.compareTo("ticker") == 0) {
 
@@ -349,7 +356,13 @@ public class CoinbaseAdvClient {
 				public void onClose(int code, String reason, boolean remote) {
 
 					logger("Status", "SUBSCRIPTION: " + subIdent + " CLOSED: " + code + ": " + reason, null);
-					recycleConnection();
+					
+					if(code == 1002 || code == -1) { // BAD GATEWAY || CONNECTION TIMED OUT
+						unsubscribeAll();
+						
+					} else {
+						recycleConnection();
+					}
 				}
 
 				@Override
@@ -383,7 +396,7 @@ public class CoinbaseAdvClient {
 								return;
 							}		
 						} catch (InterruptedException e) {
-							e.printStackTrace();
+							// TODO: TURN THIS LIGHT RED
 						}
 					}
 					SUB_HOLD = true;
@@ -394,7 +407,10 @@ public class CoinbaseAdvClient {
 					subscriptionOptionsMap.remove(subIdent);
 					
 					try {
-						subscribe(subIdent, list, channel, recycle);
+						
+						if(subscribe(subIdent, list, channel, recycle) == null) {
+							return;
+						}
 						
 					} catch (InterruptedException e) {
 						e.printStackTrace();

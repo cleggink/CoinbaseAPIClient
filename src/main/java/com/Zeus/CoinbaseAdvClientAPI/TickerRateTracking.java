@@ -18,12 +18,14 @@ public class TickerRateTracking {
 	private Map<String, TickerData> data;
 	private Boolean hold;
 	private Integer minTicks;
+	private Double stallMultiplier;
 
  	public TickerRateTracking() {
 		
 		this.data = new HashMap<String, TickerData>();
 		this.hold = false;
 		this.minTicks = 100;
+		this.stallMultiplier = 2.0;
 	}
 	
 	public void resetData(String product) throws InterruptedException {
@@ -43,7 +45,12 @@ public class TickerRateTracking {
 		this.minTicks = min;
 	}
 	
-	public void setStalledTimer(String product, Integer seconds) {
+	public void setStallMultiplier(Double passVar) {
+		
+		this.stallMultiplier = passVar;
+	}
+	
+	private void setStalledTimer(String product, Integer seconds) {
 		
 		this.data.get(product).stalledTimer = seconds;
 	}
@@ -74,7 +81,7 @@ public class TickerRateTracking {
 
 		if(this.data.get(product).rate > 0.0) {
 			this.setStalledTimer(product, 
-					new BigDecimal((this.minTicks / this.data.get(product).rate) * 2.0).intValue());
+					new BigDecimal((this.minTicks / this.data.get(product).rate) * this.stallMultiplier).intValue());
 		}
 	}
 	
@@ -126,8 +133,8 @@ public class TickerRateTracking {
 		returnVal.ticks = 0;
 		returnVal.rate = 0.0;
 		returnVal.stalled = false;
-		returnVal.stalledTimer = 600000;
+		returnVal.stalledTimer = 600;
 		returnVal.timeStart = Instant.now().getEpochSecond();
 		return returnVal;
-	}	
+	}
 }
